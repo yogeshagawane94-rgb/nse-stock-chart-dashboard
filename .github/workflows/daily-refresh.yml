@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # 16:30 IST on weekdays, after the NSE session and Yahoo data refresh.
-    - cron: "30 11 * * 1-5"
+    - cron: "0 11 * * 1-5"
 
 permissions:
   contents: write
