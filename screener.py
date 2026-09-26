@@ -37,6 +37,7 @@ CHART_BARS = 180
 PRICE_BATCH_SIZE = 100
 DOWNLOAD_TIMEOUT_SECONDS = 30
 SAVE_CHARTS = os.getenv("SAVE_CHARTS", "true").lower() not in {"0", "false", "no"}
+MAX_SCREENING_ERRORS = int(os.getenv("MAX_SCREENING_ERRORS", "20"))
 
 
 def load_universe() -> pd.DataFrame:
@@ -219,6 +220,7 @@ def main() -> None:
     rows = list(universe.iterrows())
     tradingview_matches = 0
     latest_data_date = None
+    screening_errors = 0
     for start in range(0, len(rows), PRICE_BATCH_SIZE):
         batch = rows[start:start + PRICE_BATCH_SIZE]
         tickers = [ticker_symbol(row["symbol"]) for _, row in batch]
@@ -229,6 +231,7 @@ def main() -> None:
         try:
             price_data = download_price_batch(tickers)
         except Exception as error:
+            screening_errors += len(batch)
             print(f"ERROR downloading batch {start + 1}-{start + len(batch)}: {error}")
             continue
 
@@ -253,10 +256,17 @@ def main() -> None:
                     results.append({k: v for k, v in metrics.items() if k != "_prices"} | {"symbol": symbol})
                     print(f"MATCH  {symbol}")
             except Exception as error:
+                screening_errors += 1
                 print(f"ERROR   {symbol}: {error}")
         print(
             f"Processed {min(start + len(batch), len(rows))}/{len(rows)} stocks",
             flush=True,
+        )
+
+    if screening_errors > MAX_SCREENING_ERRORS:
+        raise RuntimeError(
+            f"Aborting without publishing screener results: {screening_errors} "
+            f"symbol/batch errors exceed the limit of {MAX_SCREENING_ERRORS}."
         )
 
     output = pd.DataFrame(results)

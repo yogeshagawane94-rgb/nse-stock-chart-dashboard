@@ -42,6 +42,7 @@ MIN_60_DAY_RETURN = 0.02
 REQUIRE_RISING_EMAS = True
 PATTERN_BATCH_SIZE = 25
 SAVE_CHARTS = os.getenv("SAVE_CHARTS", "true").lower() not in {"0", "false", "no"}
+MAX_PATTERN_DATA_ERRORS = int(os.getenv("MAX_PATTERN_DATA_ERRORS", "20"))
 
 
 def download_price_batch(tickers: list[str]) -> dict[str, pd.DataFrame]:
@@ -163,6 +164,7 @@ def main() -> None:
     screened = pd.read_csv(INPUT_FILE)
     symbols = screened["symbol"].dropna().astype(str).str.upper().drop_duplicates().tolist()
     results: list[dict] = []
+    data_errors = 0
     for start in range(0, len(symbols), PATTERN_BATCH_SIZE):
         batch_symbols = symbols[start:start + PATTERN_BATCH_SIZE]
         tickers = [ticker_symbol(symbol) for symbol in batch_symbols]
@@ -170,17 +172,28 @@ def main() -> None:
         try:
             price_data = download_price_batch(tickers)
         except Exception as error:
+            data_errors += len(batch_symbols)
             print(f"ERROR batch: {error}")
             continue
 
         for symbol, ticker in zip(batch_symbols, tickers):
-            metrics = analyze_pattern(price_data.get(ticker, pd.DataFrame()))
+            prices = price_data.get(ticker, pd.DataFrame())
+            if prices.empty:
+                data_errors += 1
+                continue
+            metrics = analyze_pattern(prices)
             if metrics is None:
                 continue
             if SAVE_CHARTS:
                 save_pattern_chart(ticker, metrics)
             results.append({k: v for k, v in metrics.items() if k != "_prices"} | {"symbol": symbol})
             print(f"PATTERN MATCH  {symbol}", flush=True)
+
+    if data_errors > MAX_PATTERN_DATA_ERRORS:
+        raise RuntimeError(
+            f"Aborting without publishing pattern results: {data_errors} "
+            f"symbols lack downloaded history; the limit is {MAX_PATTERN_DATA_ERRORS}."
+        )
 
     output_columns = [
         "pattern",
