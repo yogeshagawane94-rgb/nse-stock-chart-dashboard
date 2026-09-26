@@ -247,6 +247,10 @@ def main() -> None:
                 if not passes_technical_filters(metrics):
                     continue
                 _, market_cap = enrich_metadata(symbol, row)
+                if not np.isfinite(market_cap):
+                    screening_errors += 1
+                    print(f"ERROR   {symbol}: market capitalization unavailable")
+                    continue
                 metrics["market_cap_inr"] = market_cap
                 metrics["latest_data_date"] = prices.index[-1].date()
                 if passes_configured_filters(metrics):

@@ -90,7 +90,8 @@ Actions tab. It refreshes the NSE universe, runs both screeners, validates that
 the base results are non-empty and recent, then commits only changed CSV data.
 Streamlit Community Cloud detects repository updates and refreshes the app.
 The workflow skips PNG generation to avoid filling repository history with
-large binary files. Runs abort before publishing when Yahoo failures exceed the
-configured error limits, preserving the last published results. Scheduled
+large binary files. Runs abort before publishing when Yahoo price or market-cap
+data errors exceed the configured limits, preserving the last published
+results. Scheduled
 starts can be delayed by GitHub during high load; data is not updated on NSE
 market holidays without a new trading session.
