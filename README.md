@@ -84,14 +84,16 @@ in the hosted app.
 
 ## Daily refresh automation
 
-The `.github/workflows/daily-refresh.yml` workflow is currently paused for
-automatic scheduling. It can be run manually from the GitHub Actions tab. It
-refreshes the NSE universe, runs both screeners, validates that
-the base results are non-empty and recent, then commits only changed CSV data.
+The `.github/workflows/daily-refresh.yml` workflow runs automatically at 16:30
+IST on weekdays and can also be started manually from the GitHub Actions tab.
+It refreshes the NSE universe, runs both screeners, validates that the base
+results are non-empty and recent, then commits only changed CSV data.
 Streamlit Community Cloud detects repository updates and refreshes the app.
-The workflow skips PNG generation to avoid filling repository history with
-large binary files. Runs abort before publishing when Yahoo price or market-cap
-data errors exceed the configured limits, preserving the last published
-results. Scheduled
-starts can be delayed by GitHub during high load; data is not updated on NSE
-market holidays without a new trading session.
+
+Generated PNG charts are uploaded as a downloadable GitHub Actions artifact
+for 14 days instead of being committed to repository history. Runs abort before
+publishing when Yahoo price or market-cap data errors exceed the configured
+limits, preserving the last published results. Scheduled starts can be delayed
+by GitHub during high load; data is not updated on NSE market holidays without
+a new trading session.
+
