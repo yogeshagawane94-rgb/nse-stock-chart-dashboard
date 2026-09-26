@@ -215,7 +215,17 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
     change_pct = change / float(previous_close) * 100 if previous_close else 0
     change_color = "#008f78" if change >= 0 else "#e53935"
 
-    figure = go.Figure()
+    chart_prices = chart_prices.copy()
+    chart_prices["ValueCr"] = chart_prices["Volume"] * chart_prices["Close"] / 10_000_000
+    chart_prices["ValueCrSMA50"] = chart_prices["ValueCr"].rolling(50).mean()
+
+    figure = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.025,
+        row_heights=[0.76, 0.24],
+    )
     figure.add_trace(
         go.Ohlc(
             x=chart_prices.index,
@@ -228,7 +238,9 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
             decreasing_line_color="#ff3b30",
             line={"width": 1},
             hoverlabel_namelength=0,
-        )
+        ),
+        row=1,
+        col=1,
     )
     for period, color in ((20, "#9aa0a6"), (50, "#6ca9ff"), (200, "#1455ff")):
         figure.add_trace(
@@ -239,8 +251,39 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
                 mode="lines",
                 line={"color": color, "width": 1.5},
                 hovertemplate=f"EMA {period}: %{{y:.2f}}<extra></extra>",
-            )
+            ),
+            row=1,
+            col=1,
         )
+
+    volume_colors = [
+        "#2eaf5d" if close > open_ else "#e53935"
+        for open_, close in zip(chart_prices["Open"], chart_prices["Close"])
+    ]
+    figure.add_trace(
+        go.Bar(
+            x=chart_prices.index,
+            y=chart_prices["ValueCr"],
+            name="Value in Cr Rs",
+            marker_color=volume_colors,
+            opacity=0.9,
+            hovertemplate="Value: %{y:,.2f} Cr Rs<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=chart_prices.index,
+            y=chart_prices["ValueCrSMA50"],
+            name="SMA 50",
+            mode="lines",
+            line={"color": "#a020f0", "width": 1.5},
+            hovertemplate="SMA 50: %{y:,.2f} Cr Rs<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
 
     axis_style = {
         "showgrid": True,
@@ -257,9 +300,26 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
         spikecolor="#7b8794",
         spikemode="across",
         rangebreaks=[{"bounds": ["sat", "mon"]}],
+        row=1,
+        col=1,
         **axis_style,
     )
-    figure.update_yaxes(showspikes=False, side="right", **axis_style)
+    figure.update_xaxes(
+        rangeslider_visible=False,
+        showticklabels=True,
+        row=2,
+        col=1,
+        **axis_style,
+    )
+    figure.update_yaxes(showspikes=False, side="right", row=1, col=1, **axis_style)
+    figure.update_yaxes(
+        showspikes=False,
+        side="right",
+        title_text="Cr Rs",
+        row=2,
+        col=1,
+        **axis_style,
+    )
     figure.update_layout(
         height=650,
         margin={"l": 8, "r": 70, "t": 82, "b": 36},
@@ -293,6 +353,16 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
                     f"L <b>{latest['Low']:,.2f}</b> &nbsp; "
                     f"C <b>{latest['Close']:,.2f}</b> &nbsp; "
                     f"<span style='color:{change_color}'>{change:+,.2f} ({change_pct:+.2f}%)</span>"
+                ),
+                "font": {"size": 13, "color": "#202124"},
+            },
+            {
+                "xref": "paper", "yref": "paper", "x": 0, "y": 0.255,
+                "xanchor": "left", "yanchor": "bottom", "showarrow": False,
+                "text": (
+                    f"<b>Volume in Cr Rs 50</b> &nbsp; "
+                    f"<span style='color:#2eaf5d'>{chart_prices['ValueCr'].iloc[-1]:,.2f}</span> "
+                    f"<span style='color:#a020f0'>{chart_prices['ValueCrSMA50'].iloc[-1]:,.2f}</span>"
                 ),
                 "font": {"size": 13, "color": "#202124"},
             },
