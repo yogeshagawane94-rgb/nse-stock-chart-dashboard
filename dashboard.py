@@ -97,7 +97,7 @@ def load_chart_prices(symbol: str) -> pd.DataFrame:
     if isinstance(prices.columns, pd.MultiIndex):
         prices.columns = prices.columns.get_level_values(0)
     prices = prices.dropna(subset=["Open", "High", "Low", "Close"]).copy()
-    for period in (20, 50, 200):
+    for period in (10, 20, 50, 200):
         prices[f"EMA{period}"] = tradingview_ema(prices["Close"], period)
     return prices.tail(180)
 
@@ -134,7 +134,7 @@ def render_chart(symbol: str) -> go.Figure | None:
         row=1,
         col=1,
     )
-    for period, color in ((20, "#f59e0b"), (50, "#2962ff"), (200, "#e83e8c")):
+    for period, color in ((10, "#ff9800"), (20, "#f59e0b"), (50, "#2962ff"), (200, "#e83e8c")):
         figure.add_trace(
             go.Scatter(
                 x=chart_prices.index,
@@ -242,7 +242,7 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
         row=1,
         col=1,
     )
-    for period, color in ((20, "#9aa0a6"), (50, "#6ca9ff"), (200, "#1455ff")):
+    for period, color in ((10, "#ff9800"), (20, "#9aa0a6"), (50, "#6ca9ff"), (200, "#1455ff")):
         figure.add_trace(
             go.Scatter(
                 x=chart_prices.index,
@@ -344,7 +344,7 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
             "borderpad": 4,
         }
     ]
-    for period, color in ((20, "#9aa0a6"), (50, "#6ca9ff"), (200, "#1455ff")):
+    for period, color in ((10, "#ff9800"), (20, "#9aa0a6"), (50, "#6ca9ff"), (200, "#1455ff")):
         price_annotations.append(
             {
                 "xref": "paper", "yref": "y", "x": 1.012,
@@ -558,7 +558,7 @@ with chart_column:
     except Exception as error:
         st.warning(f"Could not load the latest chart for {selected_symbol}: {error}")
 
-    st.caption("EMA 20 Â· EMA 50 Â· EMA 200")
+    st.caption("EMA 10 Â· EMA 20 Â· EMA 50 Â· EMA 200")
     st.markdown(
         '<div class="hint">Use the â† / â†’ arrow keys to move through this watchlist. '
         'Keyboard shortcuts are ignored while typing in search fields.</div>',
