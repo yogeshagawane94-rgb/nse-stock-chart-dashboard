@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import html
+from io import BytesIO
 from pathlib import Path
 
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import mplfinance as mpf
 import pandas as pd
 import streamlit as st
@@ -27,7 +29,7 @@ chart_keyboard = components.declare_component(
 
 st.set_page_config(
     page_title="Stock Review | NSE Screener",
-    page_icon="📈",
+    page_icon="ðŸ“ˆ",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -65,7 +67,8 @@ st.markdown(
 
 
 @st.cache_data(show_spinner=False)
-def load_results(csv_path: str) -> pd.DataFrame:
+def load_results(csv_path: str, file_version: int) -> pd.DataFrame:
+    """Load results and invalidate the cache whenever the CSV is replaced."""
     frame = pd.read_csv(csv_path)
     if "symbol" not in frame.columns:
         raise ValueError("The results CSV must contain a 'symbol' column.")
@@ -103,10 +106,37 @@ def load_chart_prices(symbol: str) -> pd.DataFrame:
     return prices.tail(180)
 
 
+@st.cache_data(ttl=3600, max_entries=300, show_spinner=False)
+def render_chart(symbol: str) -> bytes:
+    """Render a chart once per symbol and reuse the PNG across reruns."""
+    chart_prices = load_chart_prices(symbol)
+    if chart_prices.empty:
+        return b""
+
+    addplots = [
+        mpf.make_addplot(chart_prices[f"EMA{period}"], color=color, width=1)
+        for period, color in ((20, "#f59e0b"), (50, "#2962ff"), (200, "#e83e8c"))
+    ]
+    figure, _ = mpf.plot(
+        chart_prices,
+        type="candle",
+        style="nightclouds",
+        volume=True,
+        addplot=addplots,
+        title=f"{symbol} | Daily | NSE",
+        figsize=(14, 8),
+        returnfig=True,
+    )
+    image = BytesIO()
+    figure.savefig(image, format="png", dpi=120, bbox_inches="tight")
+    plt.close(figure)
+    return image.getvalue()
+
+
 def display_value(row: pd.Series, column: str, suffix: str = "") -> str:
     value = row.get(column)
     if pd.isna(value):
-        return "—"
+        return "â€”"
     return f"{float(value):,.2f}{suffix}"
 
 
@@ -117,8 +147,8 @@ def move_selection(symbols: list[str], offset: int) -> None:
 
 
 st.markdown(
-    '<div class="topline"><span class="brand">NSE · CHART REVIEW</span>'
-    '<span class="exchange">Daily charts · Screener workspace</span></div>',
+    '<div class="topline"><span class="brand">NSE Â· CHART REVIEW</span>'
+    '<span class="exchange">Daily charts Â· Screener workspace</span></div>',
     unsafe_allow_html=True,
 )
 
@@ -145,7 +175,7 @@ if not csv_path.exists():
     st.stop()
 
 try:
-    results = load_results(str(csv_path))
+    results = load_results(str(csv_path), csv_path.stat().st_mtime_ns)
 except (OSError, ValueError, pd.errors.ParserError) as error:
     st.error(f"Could not load the results: {error}")
     st.stop()
@@ -187,7 +217,7 @@ table = results[table_columns].rename(
     }
 )
 with watchlist_column:
-    st.caption(f"{len(results):,} symbols · {latest_date or 'date n/a'}")
+    st.caption(f"{len(results):,} symbols Â· {latest_date or 'date n/a'}")
     selected_rows = st.dataframe(
         table,
         hide_index=True,
@@ -213,7 +243,7 @@ with chart_column:
     selected_row = results.loc[results["symbol"].eq(selected_symbol)].iloc[0]
     st.markdown(
         f'<div class="chartbar"><span><strong>{html.escape(selected_symbol)}</strong>'
-        '<span class="exchange"> · 1D · NSE</span></span>'
+        '<span class="exchange"> Â· 1D Â· NSE</span></span>'
         f'<span class="exchange">Data date {html.escape(str(latest_date or "n/a"))}</span></div>',
         unsafe_allow_html=True,
     )
@@ -235,32 +265,19 @@ with chart_column:
     metrics[3].metric("EMA 200", display_value(selected_row, "ema200"))
 
     try:
-        chart_prices = load_chart_prices(selected_symbol)
-        if chart_prices.empty:
+        chart_image = render_chart(selected_symbol)
+        if not chart_image:
             st.warning(f"No recent price history is available for {selected_symbol}.")
         else:
-            addplots = [
-                mpf.make_addplot(chart_prices[f"EMA{period}"], color=color, width=1)
-                for period, color in ((20, "#f59e0b"), (50, "#2962ff"), (200, "#e83e8c"))
-            ]
-            figure, _ = mpf.plot(
-                chart_prices,
-                type="candle",
-                style="nightclouds",
-                volume=True,
-                addplot=addplots,
-                title=f"{selected_symbol} | Daily | NSE",
-                figsize=(14, 8),
-                returnfig=True,
-            )
-            st.pyplot(figure, clear_figure=True, use_container_width=True)
+            st.image(chart_image, use_container_width=True)
+            chart_prices = load_chart_prices(selected_symbol)
             latest_date = chart_prices.index[-1].date().isoformat()
     except Exception as error:
         st.warning(f"Could not load the latest chart for {selected_symbol}: {error}")
 
-    st.caption("EMA 20 · EMA 50 · EMA 200")
+    st.caption("EMA 20 Â· EMA 50 Â· EMA 200")
     st.markdown(
-        '<div class="hint">Use the ← / → arrow keys to move through this watchlist. '
+        '<div class="hint">Use the â† / â†’ arrow keys to move through this watchlist. '
         'Keyboard shortcuts are ignored while typing in search fields.</div>',
         unsafe_allow_html=True,
     )
@@ -279,6 +296,7 @@ with chart_column:
     if "volume_support" in selected_row:
         details.append(f"Volume support: {'Yes' if bool(selected_row['volume_support']) else 'No'}")
     if details:
-        st.caption("  ·  ".join(details))
+        st.caption("  Â·  ".join(details))
 
 st.caption("Research view only; screener matches are not trade recommendations.")
+
