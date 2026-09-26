@@ -202,6 +202,105 @@ def render_chart(symbol: str) -> go.Figure | None:
     return figure
 
 
+@st.cache_data(ttl=3600, max_entries=300, show_spinner=False)
+def render_ohlc_chart(symbol: str) -> go.Figure | None:
+    """Build a TradingView-inspired OHLC bars chart."""
+    chart_prices = load_chart_prices(symbol)
+    if chart_prices.empty:
+        return None
+
+    latest = chart_prices.iloc[-1]
+    previous_close = chart_prices["Close"].iloc[-2] if len(chart_prices) > 1 else latest["Open"]
+    change = float(latest["Close"] - previous_close)
+    change_pct = change / float(previous_close) * 100 if previous_close else 0
+    change_color = "#008f78" if change >= 0 else "#e53935"
+
+    figure = go.Figure()
+    figure.add_trace(
+        go.Ohlc(
+            x=chart_prices.index,
+            open=chart_prices["Open"],
+            high=chart_prices["High"],
+            low=chart_prices["Low"],
+            close=chart_prices["Close"],
+            name="OHLC",
+            increasing_line_color="#00a68a",
+            decreasing_line_color="#ff3b30",
+            line={"width": 1},
+            hoverlabel_namelength=0,
+        )
+    )
+    for period, color in ((20, "#9aa0a6"), (50, "#6ca9ff"), (200, "#1455ff")):
+        figure.add_trace(
+            go.Scatter(
+                x=chart_prices.index,
+                y=chart_prices[f"EMA{period}"],
+                name=f"EMA {period}",
+                mode="lines",
+                line={"color": color, "width": 1.5},
+                hovertemplate=f"EMA {period}: %{{y:.2f}}<extra></extra>",
+            )
+        )
+
+    axis_style = {
+        "showgrid": True,
+        "gridcolor": "#e8ebef",
+        "zeroline": False,
+        "showline": True,
+        "linecolor": "#d7dbe0",
+        "tickfont": {"color": "#202124", "size": 11},
+    }
+    figure.update_xaxes(
+        rangeslider_visible=False,
+        showspikes=True,
+        spikethickness=1,
+        spikecolor="#7b8794",
+        spikemode="across",
+        rangebreaks=[{"bounds": ["sat", "mon"]}],
+        **axis_style,
+    )
+    figure.update_yaxes(showspikes=False, side="right", **axis_style)
+    figure.update_layout(
+        height=650,
+        margin={"l": 8, "r": 70, "t": 82, "b": 36},
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font={"color": "#202124", "family": "Arial"},
+        hovermode="x",
+        hoverlabel={"bgcolor": "#202124", "font": {"color": "#ffffff"}},
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.035,
+            "xanchor": "left",
+            "x": 0,
+            "font": {"size": 11, "color": "#202124"},
+        },
+        showlegend=True,
+        annotations=[
+            {
+                "xref": "paper", "yref": "paper", "x": 0, "y": 1.13,
+                "xanchor": "left", "yanchor": "top", "showarrow": False,
+                "text": f"<b>{symbol}</b> Â· {symbol} Â· 1D Â· NSE",
+                "font": {"size": 18, "color": "#202124"},
+            },
+            {
+                "xref": "paper", "yref": "paper", "x": 0, "y": 1.075,
+                "xanchor": "left", "yanchor": "top", "showarrow": False,
+                "text": (
+                    f"O <b>{latest['Open']:,.2f}</b> &nbsp; "
+                    f"H <b>{latest['High']:,.2f}</b> &nbsp; "
+                    f"L <b>{latest['Low']:,.2f}</b> &nbsp; "
+                    f"C <b>{latest['Close']:,.2f}</b> &nbsp; "
+                    f"<span style='color:{change_color}'>{change:+,.2f} ({change_pct:+.2f}%)</span>"
+                ),
+                "font": {"size": 13, "color": "#202124"},
+            },
+        ],
+    )
+    return figure
+
+
 def display_value(row: pd.Series, column: str, suffix: str = "") -> str:
     value = row.get(column)
     if pd.isna(value):
@@ -334,7 +433,7 @@ with chart_column:
     metrics[3].metric("EMA 200", display_value(selected_row, "ema200"))
 
     try:
-        chart = render_chart(selected_symbol)
+        chart = render_ohlc_chart(selected_symbol)
         if chart is None:
             st.warning(f"No recent price history is available for {selected_symbol}.")
         else:
