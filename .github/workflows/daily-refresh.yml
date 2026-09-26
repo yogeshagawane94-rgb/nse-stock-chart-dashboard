@@ -1,8 +1,6 @@
 name: Daily stock screener refresh
 
 on:
-  schedule:
-    - cron: "15 12 * * 1-5"
   workflow_dispatch:
 
 permissions:

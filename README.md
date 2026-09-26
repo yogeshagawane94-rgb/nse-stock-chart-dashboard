@@ -84,9 +84,9 @@ in the hosted app.
 
 ## Daily refresh automation
 
-The `.github/workflows/daily-refresh.yml` workflow runs Monday through Friday
-at 12:15 UTC (5:45 p.m. India time), with a manual run option in the GitHub
-Actions tab. It refreshes the NSE universe, runs both screeners, validates that
+The `.github/workflows/daily-refresh.yml` workflow is currently paused for
+automatic scheduling. It can be run manually from the GitHub Actions tab. It
+refreshes the NSE universe, runs both screeners, validates that
 the base results are non-empty and recent, then commits only changed CSV data.
 Streamlit Community Cloud detects repository updates and refreshes the app.
 The workflow skips PNG generation to avoid filling repository history with
