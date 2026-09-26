@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import html
-from io import BytesIO
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import mplfinance as mpf
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 import yfinance as yf
+from plotly.subplots import make_subplots
 
 from screener import DOWNLOAD_TIMEOUT_SECONDS, PERIOD, tradingview_ema, ticker_symbol
 
@@ -107,30 +103,103 @@ def load_chart_prices(symbol: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, max_entries=300, show_spinner=False)
-def render_chart(symbol: str) -> bytes:
-    """Render a chart once per symbol and reuse the PNG across reruns."""
+def render_chart(symbol: str) -> go.Figure | None:
+    """Build a TradingView-inspired interactive chart once per symbol."""
     chart_prices = load_chart_prices(symbol)
     if chart_prices.empty:
-        return b""
+        return None
 
-    addplots = [
-        mpf.make_addplot(chart_prices[f"EMA{period}"], color=color, width=1)
-        for period, color in ((20, "#f59e0b"), (50, "#2962ff"), (200, "#e83e8c"))
-    ]
-    figure, _ = mpf.plot(
-        chart_prices,
-        type="candle",
-        style="nightclouds",
-        volume=True,
-        addplot=addplots,
-        title=f"{symbol} | Daily | NSE",
-        figsize=(14, 8),
-        returnfig=True,
+    figure = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.02,
+        row_heights=[0.78, 0.22],
+        subplot_titles=(f"{symbol} Â· NSE Â· 1D", "Volume"),
     )
-    image = BytesIO()
-    figure.savefig(image, format="png", dpi=120, bbox_inches="tight")
-    plt.close(figure)
-    return image.getvalue()
+    figure.add_trace(
+        go.Candlestick(
+            x=chart_prices.index,
+            open=chart_prices["Open"],
+            high=chart_prices["High"],
+            low=chart_prices["Low"],
+            close=chart_prices["Close"],
+            name="Price",
+            increasing_line_color="#26a69a",
+            increasing_fillcolor="#26a69a",
+            decreasing_line_color="#ef5350",
+            decreasing_fillcolor="#ef5350",
+            hoverlabel_namelength=0,
+        ),
+        row=1,
+        col=1,
+    )
+    for period, color in ((20, "#f59e0b"), (50, "#2962ff"), (200, "#e83e8c")):
+        figure.add_trace(
+            go.Scatter(
+                x=chart_prices.index,
+                y=chart_prices[f"EMA{period}"],
+                name=f"EMA {period}",
+                mode="lines",
+                line={"color": color, "width": 1.4},
+                hovertemplate=f"EMA {period}: %{{y:.2f}}<extra></extra>",
+            ),
+            row=1,
+            col=1,
+        )
+    volume_colors = [
+        "#26a69a" if close >= open_ else "#ef5350"
+        for open_, close in zip(chart_prices["Open"], chart_prices["Close"])
+    ]
+    figure.add_trace(
+        go.Bar(
+            x=chart_prices.index,
+            y=chart_prices["Volume"],
+            name="Volume",
+            marker_color=volume_colors,
+            opacity=0.72,
+            hovertemplate="Volume: %{y:,.0f}<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    axis_style = {
+        "showgrid": True,
+        "gridcolor": "#1f2933",
+        "zeroline": False,
+        "showline": True,
+        "linecolor": "#303944",
+        "tickfont": {"color": "#89909e", "size": 11},
+    }
+    figure.update_xaxes(
+        rangeslider_visible=False,
+        showspikes=True,
+        spikethickness=1,
+        spikecolor="#89909e",
+        spikemode="across",
+        **axis_style,
+    )
+    figure.update_yaxes(showspikes=False, **axis_style)
+    figure.update_layout(
+        height=670,
+        margin={"l": 8, "r": 65, "t": 34, "b": 8},
+        paper_bgcolor="#0c0f14",
+        plot_bgcolor="#0c0f14",
+        font={"color": "#d1d4dc", "family": "Arial"},
+        hovermode="x unified",
+        hoverlabel={"bgcolor": "#1b222d", "font": {"color": "#d1d4dc"}},
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.01,
+            "xanchor": "left",
+            "x": 0,
+            "font": {"size": 11},
+        },
+        showlegend=True,
+    )
+    figure.update_annotations(font={"color": "#89909e", "size": 10})
+    return figure
 
 
 def display_value(row: pd.Series, column: str, suffix: str = "") -> str:
@@ -265,11 +334,20 @@ with chart_column:
     metrics[3].metric("EMA 200", display_value(selected_row, "ema200"))
 
     try:
-        chart_image = render_chart(selected_symbol)
-        if not chart_image:
+        chart = render_chart(selected_symbol)
+        if chart is None:
             st.warning(f"No recent price history is available for {selected_symbol}.")
         else:
-            st.image(chart_image, use_container_width=True)
+            st.plotly_chart(
+                chart,
+                use_container_width=True,
+                theme=None,
+                config={
+                    "displaylogo": False,
+                    "scrollZoom": True,
+                    "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+                },
+            )
             chart_prices = load_chart_prices(selected_symbol)
             latest_date = chart_prices.index[-1].date().isoformat()
     except Exception as error:
