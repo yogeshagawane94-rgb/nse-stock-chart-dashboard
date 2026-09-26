@@ -281,7 +281,7 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
             {
                 "xref": "paper", "yref": "paper", "x": 0, "y": 1.13,
                 "xanchor": "left", "yanchor": "top", "showarrow": False,
-                "text": f"<b>{symbol}</b> Â· {symbol} Â· 1D Â· NSE",
+                "text": f"<b>{symbol}</b> Â· 1D Â· NSE",
                 "font": {"size": 18, "color": "#202124"},
             },
             {
