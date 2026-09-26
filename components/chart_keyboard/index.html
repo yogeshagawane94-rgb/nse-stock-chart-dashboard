@@ -4,20 +4,48 @@
     <meta charset="utf-8" />
     <style>
       html, body { margin: 0; background: transparent; color: #89909e; font: 12px Arial, sans-serif; }
-      #key-hint { box-sizing: border-box; height: 30px; padding: 7px 9px; border: 1px solid #282e38; border-radius: 3px; outline: none; }
-      #key-hint:focus { border-color: #2962ff; color: #d1d4dc; }
+      #controls { display: flex; align-items: center; gap: 10px; height: 30px; }
+      #fullscreen { box-sizing: border-box; height: 28px; padding: 5px 9px; border: 1px solid #282e38; border-radius: 3px; background: #14181f; color: #d1d4dc; cursor: pointer; font: inherit; }
+      #fullscreen:hover, #fullscreen:focus { border-color: #2962ff; }
+      #key-hint { color: #89909e; }
     </style>
   </head>
   <body>
-    <div id="key-hint" tabindex="0" title="Use the left and right arrow keys to change charts">
-      Click chart area, then press ← / → to change charts
+    <div id="controls">
+      <button id="fullscreen" type="button">Fullscreen</button>
+      <span id="key-hint">Use left/right arrows to browse charts</span>
+    </div>
+    <div hidden id="old-key-hint" tabindex="0" title="Use the left and right arrow keys to change charts">
+      Click chart area, then press â† / â†’ to change charts
     </div>
     <script>
       const hint = document.getElementById("key-hint");
+      const fullscreenButton = document.getElementById("fullscreen");
       const postToStreamlit = (type, data = {}) => {
         window.parent.postMessage({ isStreamlitMessage: true, type, ...data }, "*");
       };
       let eventNumber = 0;
+
+      fullscreenButton.addEventListener("click", async () => {
+        try {
+          const parentDocument = window.parent.document;
+          if (parentDocument.fullscreenElement) {
+            await parentDocument.exitFullscreen();
+          } else {
+            await parentDocument.documentElement.requestFullscreen();
+          }
+        } catch (_) {
+          hint.textContent = "Fullscreen is unavailable in this browser";
+        }
+      });
+
+      try {
+        window.parent.document.addEventListener("fullscreenchange", () => {
+          fullscreenButton.textContent = window.parent.document.fullscreenElement
+            ? "Exit fullscreen"
+            : "Fullscreen";
+        });
+      } catch (_) {}
 
       function sendKey(event) {
         const target = event.target;
@@ -39,13 +67,13 @@
         if (event.data && event.data.type === "streamlit:render") {
           const symbol = event.data.args && event.data.args.symbol;
           hint.textContent = symbol
-            ? `${symbol} · Press ← / → to browse charts`
-            : "Click chart area, then press ← / → to change charts";
+            ? `${symbol} Â· Press â† / â†’ to browse charts`
+            : "Click chart area, then press â† / â†’ to change charts";
         }
       });
       postToStreamlit("streamlit:componentReady", { apiVersion: 1 });
       postToStreamlit("streamlit:setFrameHeight", { height: 34 });
-      hint.addEventListener("keydown", sendKey);
     </script>
   </body>
 </html>
+
