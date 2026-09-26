@@ -3,15 +3,22 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import mplfinance as mpf
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+import yfinance as yf
+
+from screener import DOWNLOAD_TIMEOUT_SECONDS, PERIOD, tradingview_ema, ticker_symbol
 
 
 ROOT = Path(__file__).resolve().parent
 DATASETS = {
-    "Pattern matches": (ROOT / "pattern_charts" / "pattern_matches.csv", ROOT / "pattern_charts"),
-    "All screener matches": (ROOT / "screened_charts" / "matches.csv", ROOT / "screened_charts"),
+    "Pattern matches": ROOT / "pattern_charts" / "pattern_matches.csv",
+    "All screener matches": ROOT / "screened_charts" / "matches.csv",
 }
 chart_keyboard = components.declare_component(
     "chart_keyboard",
@@ -75,6 +82,27 @@ def load_results(csv_path: str) -> pd.DataFrame:
     return frame
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_chart_prices(symbol: str) -> pd.DataFrame:
+    prices = yf.download(
+        ticker_symbol(symbol),
+        period=PERIOD,
+        interval="1d",
+        auto_adjust=False,
+        progress=False,
+        threads=False,
+        timeout=DOWNLOAD_TIMEOUT_SECONDS,
+    )
+    if prices.empty:
+        return prices
+    if isinstance(prices.columns, pd.MultiIndex):
+        prices.columns = prices.columns.get_level_values(0)
+    prices = prices.dropna(subset=["Open", "High", "Low", "Close"]).copy()
+    for period in (20, 50, 200):
+        prices[f"EMA{period}"] = tradingview_ema(prices["Close"], period)
+    return prices.tail(180)
+
+
 def display_value(row: pd.Series, column: str, suffix: str = "") -> str:
     value = row.get(column)
     if pd.isna(value):
@@ -103,7 +131,7 @@ with watchlist_column:
         unsafe_allow_html=True,
     )
     dataset_name = st.selectbox("Stock set", list(DATASETS), label_visibility="collapsed")
-    csv_path, chart_dir = DATASETS[dataset_name]
+    csv_path = DATASETS[dataset_name]
     search = st.text_input("Find symbol", placeholder="Search symbols", label_visibility="collapsed").strip().upper()
     sort_label = st.selectbox(
         "Sort watchlist",
@@ -206,12 +234,29 @@ with chart_column:
     metrics[2].metric("EMA 50", display_value(selected_row, "ema50"))
     metrics[3].metric("EMA 200", display_value(selected_row, "ema200"))
 
-    symbol_stem = selected_symbol.removesuffix(".NS").removesuffix(".BO")
-    chart_path = chart_dir / f"{symbol_stem}.png"
-    if chart_path.exists():
-        st.image(str(chart_path), use_container_width=True)
-    else:
-        st.warning(f"No saved chart image found for {selected_symbol}.")
+    try:
+        chart_prices = load_chart_prices(selected_symbol)
+        if chart_prices.empty:
+            st.warning(f"No recent price history is available for {selected_symbol}.")
+        else:
+            addplots = [
+                mpf.make_addplot(chart_prices[f"EMA{period}"], color=color, width=1)
+                for period, color in ((20, "#f59e0b"), (50, "#2962ff"), (200, "#e83e8c"))
+            ]
+            figure, _ = mpf.plot(
+                chart_prices,
+                type="candle",
+                style="nightclouds",
+                volume=True,
+                addplot=addplots,
+                title=f"{selected_symbol} | Daily | NSE",
+                figsize=(14, 8),
+                returnfig=True,
+            )
+            st.pyplot(figure, clear_figure=True, use_container_width=True)
+            latest_date = chart_prices.index[-1].date().isoformat()
+    except Exception as error:
+        st.warning(f"Could not load the latest chart for {selected_symbol}: {error}")
 
     st.caption("EMA 20 · EMA 50 · EMA 200")
     st.markdown(

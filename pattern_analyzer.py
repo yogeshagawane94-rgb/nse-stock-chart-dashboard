@@ -7,6 +7,7 @@ recent breakout with supporting volume. It does not change the base screener.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import matplotlib
@@ -40,6 +41,7 @@ BREAKOUT_VOLUME_MULTIPLIER = 1.00
 MIN_60_DAY_RETURN = 0.02
 REQUIRE_RISING_EMAS = True
 PATTERN_BATCH_SIZE = 25
+SAVE_CHARTS = os.getenv("SAVE_CHARTS", "true").lower() not in {"0", "false", "no"}
 
 
 def download_price_batch(tickers: list[str]) -> dict[str, pd.DataFrame]:
@@ -175,11 +177,26 @@ def main() -> None:
             metrics = analyze_pattern(price_data.get(ticker, pd.DataFrame()))
             if metrics is None:
                 continue
-            save_pattern_chart(ticker, metrics)
+            if SAVE_CHARTS:
+                save_pattern_chart(ticker, metrics)
             results.append({k: v for k, v in metrics.items() if k != "_prices"} | {"symbol": symbol})
             print(f"PATTERN MATCH  {symbol}", flush=True)
 
-    output = pd.DataFrame(results)
+    output_columns = [
+        "pattern",
+        "price_inr",
+        "ema20",
+        "ema50",
+        "ema200",
+        "consolidation_range_pct",
+        "consolidation_high",
+        "breakout",
+        "volume_support",
+        "return_60d_pct",
+        "latest_data_date",
+        "symbol",
+    ]
+    output = pd.DataFrame(results, columns=output_columns)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output.to_csv(OUTPUT_FILE, index=False)
     print(f"\nPattern matches: {len(output)}")

@@ -63,6 +63,10 @@ The dashboard lets you switch between all base screener matches and the
 second-stage pattern matches, search and sort symbols, and review each saved
 chart with its available EMA and pattern metrics.
 
+Charts are fetched from Yahoo Finance when selected, so the hosted dashboard
+does not rely on committed PNG files. CSV results are cached by the app for up
+to one hour.
+
 ## Public cloud deployment
 
 Streamlit Community Cloud apps and their GitHub repository contents are
@@ -76,4 +80,15 @@ To deploy, push this project to a public GitHub repository, sign in at
 that repository, and set the entry point to `dashboard.py`. Keep
 `requirements.txt`, `components/chart_keyboard/index.html`, and both chart
 output folders in the repository. Updates to repository files are reflected
-in the hosted app; daily data refresh still needs a scheduled workflow.
+in the hosted app.
+
+## Daily refresh automation
+
+The `.github/workflows/daily-refresh.yml` workflow runs Monday through Friday
+at 12:15 UTC (5:45 p.m. India time), with a manual run option in the GitHub
+Actions tab. It refreshes the NSE universe, runs both screeners, validates that
+the base results are non-empty and recent, then commits only changed CSV data.
+Streamlit Community Cloud detects repository updates and refreshes the app.
+The workflow skips PNG generation to avoid filling repository history with
+large binary files. Scheduled starts can be delayed by GitHub during high load;
+data is not updated on NSE market holidays without a new trading session.

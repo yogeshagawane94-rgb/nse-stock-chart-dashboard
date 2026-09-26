@@ -7,6 +7,7 @@ the SETTINGS section below.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import matplotlib
@@ -35,6 +36,7 @@ REQUIRE_EMA_20_ABOVE_EMA_50 = True
 CHART_BARS = 180
 PRICE_BATCH_SIZE = 100
 DOWNLOAD_TIMEOUT_SECONDS = 30
+SAVE_CHARTS = os.getenv("SAVE_CHARTS", "true").lower() not in {"0", "false", "no"}
 
 
 def load_universe() -> pd.DataFrame:
@@ -243,9 +245,11 @@ def main() -> None:
                     continue
                 _, market_cap = enrich_metadata(symbol, row)
                 metrics["market_cap_inr"] = market_cap
+                metrics["latest_data_date"] = prices.index[-1].date()
                 if passes_configured_filters(metrics):
                     tradingview_matches += 1
-                    save_chart(ticker, metrics)
+                    if SAVE_CHARTS:
+                        save_chart(ticker, metrics)
                     results.append({k: v for k, v in metrics.items() if k != "_prices"} | {"symbol": symbol})
                     print(f"MATCH  {symbol}")
             except Exception as error:
