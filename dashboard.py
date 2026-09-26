@@ -307,6 +307,11 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
     figure.update_xaxes(
         rangeslider_visible=False,
         showticklabels=True,
+        showspikes=True,
+        spikethickness=1,
+        spikecolor="#7b8794",
+        spikemode="across",
+        rangebreaks=[{"bounds": ["sat", "mon"]}],
         row=2,
         col=1,
         **axis_style,
@@ -320,9 +325,40 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
         col=1,
         **axis_style,
     )
+    figure.add_hline(
+        y=float(latest["Close"]),
+        row=1,
+        col=1,
+        line_color=change_color,
+        line_width=1,
+        line_dash="dot",
+    )
+    price_annotations = [
+        {
+            "xref": "paper", "yref": "y", "x": 1.012,
+            "y": float(latest["Close"]), "showarrow": False,
+            "xanchor": "left", "yanchor": "middle",
+            "text": f"{latest['Close']:,.2f}",
+            "bgcolor": change_color, "bordercolor": change_color,
+            "font": {"color": "#ffffff", "size": 11},
+            "borderpad": 4,
+        }
+    ]
+    for period, color in ((20, "#9aa0a6"), (50, "#6ca9ff"), (200, "#1455ff")):
+        price_annotations.append(
+            {
+                "xref": "paper", "yref": "y", "x": 1.012,
+                "y": float(latest[f"EMA{period}"]), "showarrow": False,
+                "xanchor": "left", "yanchor": "middle",
+                "text": f"EMA {period} {latest[f'EMA{period}']:,.2f}",
+                "bgcolor": color, "bordercolor": color,
+                "font": {"color": "#ffffff", "size": 10},
+                "borderpad": 3,
+            }
+        )
     figure.update_layout(
         height=650,
-        margin={"l": 8, "r": 70, "t": 82, "b": 36},
+        margin={"l": 8, "r": 118, "t": 112, "b": 36},
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
         font={"color": "#202124", "family": "Arial"},
@@ -331,7 +367,7 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
         legend={
             "orientation": "h",
             "yanchor": "bottom",
-            "y": 1.035,
+            "y": 1.045,
             "xanchor": "left",
             "x": 0,
             "font": {"size": 11, "color": "#202124"},
@@ -339,13 +375,13 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
         showlegend=True,
         annotations=[
             {
-                "xref": "paper", "yref": "paper", "x": 0, "y": 1.13,
+                "xref": "paper", "yref": "paper", "x": 0, "y": 1.19,
                 "xanchor": "left", "yanchor": "top", "showarrow": False,
                 "text": f"<b>{symbol}</b> Â· 1D Â· NSE",
                 "font": {"size": 18, "color": "#202124"},
             },
             {
-                "xref": "paper", "yref": "paper", "x": 0, "y": 1.075,
+                "xref": "paper", "yref": "paper", "x": 0, "y": 1.12,
                 "xanchor": "left", "yanchor": "top", "showarrow": False,
                 "text": (
                     f"O <b>{latest['Open']:,.2f}</b> &nbsp; "
@@ -366,7 +402,7 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
                 ),
                 "font": {"size": 13, "color": "#202124"},
             },
-        ],
+        ] + price_annotations,
     )
     return figure
 
