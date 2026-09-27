@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 import yfinance as yf
 from plotly.subplots import make_subplots
 
-from screener import DOWNLOAD_TIMEOUT_SECONDS, PERIOD, tradingview_ema, ticker_symbol
+from screener import DOWNLOAD_TIMEOUT_SECONDS, tradingview_ema, ticker_symbol
 
 
 ROOT = Path(__file__).resolve().parent
@@ -25,7 +25,7 @@ chart_keyboard = components.declare_component(
 
 st.set_page_config(
     page_title="Stock Review | NSE Screener",
-    page_icon="ðŸ“ˆ",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -87,10 +87,10 @@ def load_results(csv_path: str, file_version: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_chart_prices(symbol: str) -> pd.DataFrame:
+def download_chart_history(symbol: str) -> pd.DataFrame:
     prices = yf.download(
         ticker_symbol(symbol),
-        period=PERIOD,
+        period="max",
         interval="1d",
         auto_adjust=False,
         progress=False,
@@ -101,10 +101,30 @@ def load_chart_prices(symbol: str) -> pd.DataFrame:
         return prices
     if isinstance(prices.columns, pd.MultiIndex):
         prices.columns = prices.columns.get_level_values(0)
-    prices = prices.dropna(subset=["Open", "High", "Low", "Close"]).copy()
+    return prices.dropna(subset=["Open", "High", "Low", "Close"])
+
+
+@st.cache_data(ttl=3600, max_entries=300, show_spinner=False)
+def load_chart_prices(symbol: str, timeframe: str = "1D") -> pd.DataFrame:
+    prices = download_chart_history(symbol)
+    if prices.empty:
+        return prices
+    prices = prices.copy()
+    prices["ValueCr"] = prices["Volume"] * prices["Close"] / 10_000_000
+    if timeframe == "1W":
+        prices = prices.resample("W-FRI", label="right", closed="right").agg(
+            {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum", "ValueCr": "sum"}
+        )
+    elif timeframe == "1M":
+        prices = prices.resample("ME", label="right", closed="right").agg(
+            {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum", "ValueCr": "sum"}
+        )
+    prices = prices.dropna(subset=["Open", "High", "Low", "Close"])
     for period in (10, 20, 50, 200):
         prices[f"EMA{period}"] = tradingview_ema(prices["Close"], period)
-    return prices.tail(180)
+    prices["ValueCrSMA50"] = prices["ValueCr"].rolling(50).mean()
+    visible_bars = {"1D": 180, "1W": 260, "1M": 240}.get(timeframe, 180)
+    return prices.tail(visible_bars)
 
 
 @st.cache_data(ttl=3600, max_entries=300, show_spinner=False)
@@ -120,7 +140,7 @@ def render_chart(symbol: str) -> go.Figure | None:
         shared_xaxes=True,
         vertical_spacing=0.02,
         row_heights=[0.78, 0.22],
-        subplot_titles=(f"{symbol} Â· NSE Â· 1D", "Volume"),
+        subplot_titles=(f"{symbol} · NSE · 1D", "Volume"),
     )
     figure.add_trace(
         go.Candlestick(
@@ -208,9 +228,9 @@ def render_chart(symbol: str) -> go.Figure | None:
 
 
 @st.cache_data(ttl=3600, max_entries=300, show_spinner=False)
-def render_ohlc_chart(symbol: str) -> go.Figure | None:
+def render_ohlc_chart(symbol: str, timeframe: str = "1D") -> go.Figure | None:
     """Build a TradingView-inspired OHLC bars chart."""
-    chart_prices = load_chart_prices(symbol)
+    chart_prices = load_chart_prices(symbol, timeframe)
     if chart_prices.empty:
         return None
 
@@ -219,10 +239,6 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
     change = float(latest["Close"] - previous_close)
     change_pct = change / float(previous_close) * 100 if previous_close else 0
     change_color = "#008f78" if change >= 0 else "#e53935"
-
-    chart_prices = chart_prices.copy()
-    chart_prices["ValueCr"] = chart_prices["Volume"] * chart_prices["Close"] / 10_000_000
-    chart_prices["ValueCrSMA50"] = chart_prices["ValueCr"].rolling(50).mean()
 
     figure = make_subplots(
         rows=2,
@@ -350,6 +366,8 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
         }
     ]
     for period, color in ((10, "#ff9800"), (20, "#9aa0a6"), (50, "#6ca9ff"), (200, "#1455ff")):
+        if pd.isna(latest[f"EMA{period}"]):
+            continue
         price_annotations.append(
             {
                 "xref": "paper", "yref": "y", "x": 1.012,
@@ -382,7 +400,7 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
             {
                 "xref": "paper", "yref": "paper", "x": 0, "y": 1.19,
                 "xanchor": "left", "yanchor": "top", "showarrow": False,
-                "text": f"<b>{symbol}</b> Â· 1D Â· NSE",
+                "text": f"<b>{symbol}</b> · {timeframe} · NSE",
                 "font": {"size": 18, "color": "#202124"},
             },
             {
@@ -415,7 +433,7 @@ def render_ohlc_chart(symbol: str) -> go.Figure | None:
 def display_value(row: pd.Series, column: str, suffix: str = "") -> str:
     value = row.get(column)
     if pd.isna(value):
-        return "â€”"
+        return "—"
     return f"{float(value):,.2f}{suffix}"
 
 
@@ -426,8 +444,8 @@ def move_selection(symbols: list[str], offset: int) -> None:
 
 
 st.markdown(
-    '<div class="topline"><span class="brand">NSE Â· CHART REVIEW</span>'
-    '<span class="exchange">Daily charts Â· Screener workspace</span></div>',
+    '<div class="topline"><span class="brand">NSE · CHART REVIEW</span>'
+    '<span class="exchange">Daily charts · Screener workspace</span></div>',
     unsafe_allow_html=True,
 )
 
@@ -496,7 +514,7 @@ table = results[table_columns].rename(
     }
 )
 with watchlist_column:
-    st.caption(f"{len(results):,} symbols Â· {latest_date or 'date n/a'}")
+    st.caption(f"{len(results):,} symbols · {latest_date or 'date n/a'}")
     selected_rows = st.dataframe(
         table,
         hide_index=True,
@@ -520,10 +538,23 @@ with watchlist_column:
 with chart_column:
     selected_symbol = st.session_state["review_symbol"]
     selected_row = results.loc[results["symbol"].eq(selected_symbol)].iloc[0]
+    timeframe = st.radio(
+        "Chart timeframe",
+        ["1D", "1W", "1M"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="chart_timeframe",
+    )
+    chart_prices = load_chart_prices(selected_symbol, timeframe)
+    if chart_prices.empty:
+        st.warning(f"No {timeframe} price history is available for {selected_symbol}.")
+        st.stop()
+    latest_chart_bar = chart_prices.iloc[-1]
+    chart_date = chart_prices.index[-1].date().isoformat()
     st.markdown(
         f'<div class="chartbar"><span><strong>{html.escape(selected_symbol)}</strong>'
-        '<span class="exchange"> Â· 1D Â· NSE</span></span>'
-        f'<span class="exchange">Data date {html.escape(str(latest_date or "n/a"))}</span></div>',
+        f'<span class="exchange"> · {timeframe} · NSE</span></span>'
+        f'<span class="exchange">Data date {html.escape(chart_date)}</span></div>',
         unsafe_allow_html=True,
     )
     keyboard_event = chart_keyboard(symbol=selected_symbol, default=None, key="chart-keyboard")
@@ -537,14 +568,17 @@ with chart_column:
                 move_selection(symbols, offset)
                 st.rerun()
 
-    metrics = st.columns(4)
-    metrics[0].metric("Close", display_value(selected_row, "price_inr", " INR"))
-    metrics[1].metric("EMA 20", display_value(selected_row, "ema20"))
-    metrics[2].metric("EMA 50", display_value(selected_row, "ema50"))
-    metrics[3].metric("EMA 200", display_value(selected_row, "ema200"))
+    metrics = st.columns(5)
+    metrics[0].metric("Close", f"{latest_chart_bar['Close']:,.2f} INR")
+    for position, period in enumerate((10, 20, 50, 200), start=1):
+        ema_value = latest_chart_bar[f"EMA{period}"]
+        metrics[position].metric(
+            f"EMA {period}",
+            f"{ema_value:,.2f}" if pd.notna(ema_value) else "—",
+        )
 
     try:
-        chart = render_ohlc_chart(selected_symbol)
+        chart = render_ohlc_chart(selected_symbol, timeframe)
         if chart is None:
             st.warning(f"No recent price history is available for {selected_symbol}.")
         else:
@@ -558,14 +592,12 @@ with chart_column:
                     "modeBarButtonsToRemove": ["lasso2d", "select2d"],
                 },
             )
-            chart_prices = load_chart_prices(selected_symbol)
-            latest_date = chart_prices.index[-1].date().isoformat()
     except Exception as error:
         st.warning(f"Could not load the latest chart for {selected_symbol}: {error}")
 
-    st.caption("EMA 10 Â· EMA 20 Â· EMA 50 Â· EMA 200")
+    st.caption("EMA 10 · EMA 20 · EMA 50 · EMA 200")
     st.markdown(
-        '<div class="hint">Use the â† / â†’ arrow keys to move through this watchlist. '
+        '<div class="hint">Use the ← / → arrow keys to move through this watchlist. '
         'Keyboard shortcuts are ignored while typing in search fields.</div>',
         unsafe_allow_html=True,
     )
@@ -584,7 +616,7 @@ with chart_column:
     if "volume_support" in selected_row:
         details.append(f"Volume support: {'Yes' if bool(selected_row['volume_support']) else 'No'}")
     if details:
-        st.caption("  Â·  ".join(details))
+        st.caption("  ·  ".join(details))
 
 st.caption("Research view only; screener matches are not trade recommendations.")
 
