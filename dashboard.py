@@ -55,11 +55,11 @@ st.markdown(
     .watchlist-count { color: var(--muted); font-size: 0.76rem; }
     .hint { color: var(--muted); font-size: 0.75rem; }
     [data-testid="stDataFrame"] * { font-size: 0.82rem; }
-    html:fullscreen .block-container { max-width: none; height: 100vh; padding: 0.35rem 0.75rem; }
-    html:fullscreen .block-container > [data-testid="stHorizontalBlock"] { height: calc(100vh - 1rem); }
-    html:fullscreen .block-container > [data-testid="stHorizontalBlock"] > div:first-child { flex: 1 1 100% !important; width: 100% !important; }
-    html:fullscreen .block-container > [data-testid="stHorizontalBlock"] > div:nth-child(2) { display: none !important; }
-    html:fullscreen .js-plotly-plot, html:fullscreen .plot-container { height: calc(100vh - 12rem) !important; }
+    body.chart-navigation-fullscreen [data-testid="stAppViewContainer"] { position: fixed !important; inset: 0 !important; z-index: 999999 !important; overflow-y: auto !important; background: #fff; }
+    body.chart-navigation-fullscreen .block-container { max-width: none; width: 100%; min-height: 100vh; padding: 0.35rem 0.75rem; }
+    body.chart-navigation-fullscreen .block-container > [data-testid="stHorizontalBlock"] { width: 100%; }
+    body.chart-navigation-fullscreen .block-container > [data-testid="stHorizontalBlock"] > [data-testid="column"]:first-child { flex: 1 1 100% !important; width: 100% !important; max-width: 100% !important; }
+    body.chart-navigation-fullscreen .block-container > [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2) { display: none !important; }
     @media (max-width: 900px) { .block-container { padding: 0.5rem; } }
     </style>
     """,
