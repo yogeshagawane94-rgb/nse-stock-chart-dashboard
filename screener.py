@@ -38,6 +38,7 @@ PRICE_BATCH_SIZE = 100
 DOWNLOAD_TIMEOUT_SECONDS = 30
 SAVE_CHARTS = os.getenv("SAVE_CHARTS", "true").lower() not in {"0", "false", "no"}
 MAX_SCREENING_ERRORS = int(os.getenv("MAX_SCREENING_ERRORS", "20"))
+MARKET_CAP_LOOKUP_DISABLED = False
 
 
 def load_universe() -> pd.DataFrame:
@@ -98,13 +99,25 @@ def tradingview_ema(series: pd.Series, period: int) -> pd.Series:
 
 
 def enrich_metadata(symbol: str, row: pd.Series) -> tuple[str, float]:
-    """Load market capitalization without requesting sector metadata."""
+    """Load cached market cap, falling back to Yahoo while available."""
+    global MARKET_CAP_LOOKUP_DISABLED
     market_cap = pd.to_numeric(row.get("market_cap_inr"), errors="coerce")
     ticker = ticker_symbol(symbol)
     if pd.notna(market_cap):
         return ticker, float(market_cap)
-
-    info = yf.Ticker(ticker).get_info()
+    if MARKET_CAP_LOOKUP_DISABLED:
+        return ticker, np.nan
+    try:
+        info = yf.Ticker(ticker).get_info()
+    except Exception as error:
+        # Historical-price downloads can work while Yahoo info rejects its session.
+        MARKET_CAP_LOOKUP_DISABLED = True
+        print(
+            f"WARNING Yahoo market-cap lookup unavailable; using cached caps "
+            f"for the rest of this run ({type(error).__name__}: {error})",
+            flush=True,
+        )
+        return ticker, np.nan
     return ticker, float(info.get("marketCap", np.nan))
 
 
@@ -221,6 +234,7 @@ def main() -> None:
     tradingview_matches = 0
     latest_data_date = None
     screening_errors = 0
+    market_cap_unavailable = 0
     for start in range(0, len(rows), PRICE_BATCH_SIZE):
         batch = rows[start:start + PRICE_BATCH_SIZE]
         tickers = [ticker_symbol(row["symbol"]) for _, row in batch]
@@ -248,8 +262,7 @@ def main() -> None:
                     continue
                 _, market_cap = enrich_metadata(symbol, row)
                 if not np.isfinite(market_cap):
-                    screening_errors += 1
-                    print(f"ERROR   {symbol}: market capitalization unavailable")
+                    market_cap_unavailable += 1
                     continue
                 metrics["market_cap_inr"] = market_cap
                 metrics["latest_data_date"] = prices.index[-1].date()
@@ -277,6 +290,11 @@ def main() -> None:
     output.to_csv(OUTPUT_DIR / "matches.csv", index=False)
     print(f"\nTradingView-equivalent matches: {tradingview_matches}")
     print(f"Latest price data date observed: {latest_data_date}")
+    if market_cap_unavailable:
+        print(
+            f"Skipped {market_cap_unavailable} technically matching symbol(s) "
+            "because no cached market cap was available."
+        )
     print(f"Saved {len(output)} chart match(es) to {OUTPUT_DIR.resolve()}")
 
 
